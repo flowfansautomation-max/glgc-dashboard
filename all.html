@@ -18,6 +18,10 @@
     .title { text-align:center; font-family:Georgia,'Times New Roman',serif; color:var(--gold);
       font-size:30px; letter-spacing:1px; margin:6px 0 2px; }
     .sub { text-align:center; color:#bbb; font-size:16px; margin-bottom:6px; }
+    .topbar { display:flex; gap:12px; align-items:center; justify-content:center; margin:8px 0; }
+    .topbar .label { color:#999; font-size:13px; }
+    select { background:#111; color:#fff; border:1px solid #333; border-radius:8px;
+      padding:9px 14px; font-size:15px; }
     .legend { display:flex; gap:34px; justify-content:center; margin:14px 0 4px; color:#cfcfcf; font-size:16px; }
     .legend span { display:inline-flex; align-items:center; gap:9px; }
     .sw { width:26px; height:14px; border-radius:2px; display:inline-block; }
@@ -36,6 +40,11 @@
     <div class="title">3000 GLGC MEGA SATURDAY SERVICES</div>
     <div class="sub" id="sub">All Hubs — loading…</div>
 
+    <div class="topbar">
+      <span class="label">Week:</span>
+      <select id="week" onchange="render()"></select>
+    </div>
+
     <div class="legend">
       <span><i class="sw" style="background:var(--blue)"></i> Rehearsal Attendance</span>
       <span><i class="sw" style="background:var(--red)"></i> Offering (GHS)</span>
@@ -46,18 +55,57 @@
   </div>
 
   <script>
+    var MODEL = null, chart = null;
+
     GLGC.load(function (model) {
-      var rows = model.leaderTotals;
+      MODEL = model;
+      var sel = document.getElementById('week');
+      sel.innerHTML = '<option value="all">All weeks (running total)</option>';
+      model.weeks.forEach(function (w) {
+        var o = document.createElement('option');
+        o.value = w.week + '|' + w.dateLabel;
+        o.textContent = 'WK ' + w.week + ' · ' + w.dateLabel;
+        sel.appendChild(o);
+      });
+      // default to the most recent week if there is more than one
+      if (model.weeks.length) sel.value = model.weeks[model.weeks.length - 1].week + '|' +
+        model.weeks[model.weeks.length - 1].dateLabel;
+      else sel.value = 'all';
+      render();
+    }, function (e) {
+      document.getElementById('sub').textContent = 'Could not load data';
+      console.error(e);
+    });
+
+    function render() {
+      if (!MODEL) return;
+      var pick = document.getElementById('week').value;
+      var rows, sub;
+
+      if (pick === 'all') {
+        rows = MODEL.leaderTotals.slice();
+        var tA = rows.reduce(function (s, r) { return s + r.attendance; }, 0);
+        var tO = rows.reduce(function (s, r) { return s + r.offering; }, 0);
+        sub = 'All Hubs So Far  ·  ' + rows.length + ' hubs  ·  ' + tA + ' total attendance  ·  GHS ' + tO + ' total offering';
+      } else {
+        var wk = parseInt(pick.split('|')[0], 10);
+        var dateLabel = pick.split('|')[1];
+        rows = [];
+        MODEL.leaders.forEach(function (L) {
+          var p = L.points.filter(function (x) { return x.week === wk; })[0];
+          if (p) rows.push({ leader: L.leader, location: L.location, attendance: p.attendance, offering: p.offering });
+        });
+        var tA2 = rows.reduce(function (s, r) { return s + r.attendance; }, 0);
+        var tO2 = rows.reduce(function (s, r) { return s + r.offering; }, 0);
+        sub = 'WK ' + wk + ' · ' + dateLabel + '  ·  ' + rows.length + ' hubs reported  ·  ' +
+              tA2 + ' attendance  ·  GHS ' + tO2 + ' offering';
+      }
+
+      document.getElementById('sub').textContent = sub;
       document.getElementById('msg').style.display = rows.length ? 'none' : 'block';
 
-      var totAtt = rows.reduce(function (s, r) { return s + r.attendance; }, 0);
-      var totOff = rows.reduce(function (s, r) { return s + r.offering; }, 0);
-      document.getElementById('sub').textContent =
-        'All Hubs So Far  ·  ' + rows.length + ' hubs  ·  ' +
-        totAtt + ' total attendance  ·  GHS ' + totOff + ' total offering';
-
       var labels = rows.map(function (r) { return [r.leader, r.location || '']; });
-      new Chart(document.getElementById('chart'), {
+      var cfg = {
         type: 'bar',
         plugins: [GLGC.valueLabels],
         data: {
@@ -77,11 +125,10 @@
             y: { beginAtZero: true, grace: '10%', ticks: { color: '#dddddd' }, grid: { color: '#222' } }
           }
         }
-      });
-    }, function (e) {
-      document.getElementById('sub').textContent = 'Could not load data';
-      console.error(e);
-    });
+      };
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById('chart'), cfg);
+    }
   </script>
 </body>
 </html>

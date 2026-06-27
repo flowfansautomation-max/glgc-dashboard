@@ -61,6 +61,14 @@
     <div class="topbar">
       <span class="label">Leader / Hub:</span>
       <select id="picker" onchange="render()"></select>
+      <span class="label">Show:</span>
+      <select id="period" onchange="render()">
+        <option value="0">All weeks</option>
+        <option value="1">Last 1 week</option>
+        <option value="2">Last 2 weeks</option>
+        <option value="3">Last 3 weeks</option>
+        <option value="4">Last 4 weeks</option>
+      </select>
     </div>
 
     <div class="title">3000 GLGC MEGA SATURDAY SERVICES</div>
@@ -251,11 +259,15 @@
       document.getElementById('location').textContent = L.location || '';
       document.getElementById('avatar').textContent = initials(L.leader);
 
-      var labels = L.points.map(function (p) { return ['WK ' + p.week, p.dateLabel]; });
-      var att = L.points.map(function (p) { return p.attendance; });
-      var off = L.points.map(function (p) { return p.offering; });
+      // Optionally show only the most recent N weeks (1–4), for trend comparison.
+      var period = parseInt(document.getElementById('period').value, 10) || 0;
+      var pts = (period > 0) ? L.points.slice(-period) : L.points;
 
-      document.getElementById('msg').style.display = L.points.length ? 'none' : 'block';
+      var labels = pts.map(function (p) { return ['WK ' + p.week, p.dateLabel]; });
+      var att = pts.map(function (p) { return p.attendance; });
+      var off = pts.map(function (p) { return p.offering; });
+
+      document.getElementById('msg').style.display = pts.length ? 'none' : 'block';
 
       var cfg = {
         type: 'bar',
