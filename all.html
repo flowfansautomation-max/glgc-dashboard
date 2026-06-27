@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLGC — All Hubs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="data.js"></script>
+  <style>
+    :root { --blue:#1f5fff; --red:#ff3b30; --gold:#e6c878; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; background:#000; color:#fff; font-family:Arial, Helvetica, sans-serif; }
+    .wrap { max-width:1300px; margin:0 auto; padding:14px 22px 50px; }
+    .nav { display:flex; gap:10px; justify-content:center; margin-bottom:10px; flex-wrap:wrap; }
+    .nav a { color:#bbb; text-decoration:none; border:1px solid #333; border-radius:20px;
+      padding:7px 16px; font-size:14px; }
+    .nav a.active { background:var(--gold); color:#000; border-color:var(--gold); font-weight:bold; }
+    .title { text-align:center; font-family:Georgia,'Times New Roman',serif; color:var(--gold);
+      font-size:30px; letter-spacing:1px; margin:6px 0 2px; }
+    .sub { text-align:center; color:#bbb; font-size:16px; margin-bottom:6px; }
+    .legend { display:flex; gap:34px; justify-content:center; margin:14px 0 4px; color:#cfcfcf; font-size:16px; }
+    .legend span { display:inline-flex; align-items:center; gap:9px; }
+    .sw { width:26px; height:14px; border-radius:2px; display:inline-block; }
+    .chartbox { height:560px; margin-top:6px; }
+    .msg { text-align:center; color:#888; padding:50px; font-size:17px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Per Hub</a>
+      <a href="all.html" class="active">All Hubs</a>
+      <a href="summary.html">Weekly Summary</a>
+    </div>
+
+    <div class="title">3000 GLGC MEGA SATURDAY SERVICES</div>
+    <div class="sub" id="sub">All Hubs — loading…</div>
+
+    <div class="legend">
+      <span><i class="sw" style="background:var(--blue)"></i> Rehearsal Attendance</span>
+      <span><i class="sw" style="background:var(--red)"></i> Offering (GHS)</span>
+    </div>
+
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="msg" id="msg" style="display:none">No submissions yet.</div>
+  </div>
+
+  <script>
+    GLGC.load(function (model) {
+      var rows = model.leaderTotals;
+      document.getElementById('msg').style.display = rows.length ? 'none' : 'block';
+
+      var totAtt = rows.reduce(function (s, r) { return s + r.attendance; }, 0);
+      var totOff = rows.reduce(function (s, r) { return s + r.offering; }, 0);
+      document.getElementById('sub').textContent =
+        'All Hubs So Far  ·  ' + rows.length + ' hubs  ·  ' +
+        totAtt + ' total attendance  ·  GHS ' + totOff + ' total offering';
+
+      var labels = rows.map(function (r) { return [r.leader, r.location || '']; });
+      new Chart(document.getElementById('chart'), {
+        type: 'bar',
+        plugins: [GLGC.valueLabels],
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Rehearsal Attendance', data: rows.map(function (r) { return r.attendance; }),
+              backgroundColor: '#1f5fff', borderRadius: 3, maxBarThickness: 40 },
+            { label: 'Offering (GHS)', data: rows.map(function (r) { return r.offering; }),
+              backgroundColor: '#ff3b30', borderRadius: 3, maxBarThickness: 40 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#dddddd', font: { size: 12 }, autoSkip: false }, grid: { color: '#1c1c1c' } },
+            y: { beginAtZero: true, grace: '10%', ticks: { color: '#dddddd' }, grid: { color: '#222' } }
+          }
+        }
+      });
+    }, function (e) {
+      document.getElementById('sub').textContent = 'Could not load data';
+      console.error(e);
+    });
+  </script>
+</body>
+</html>
