@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLGC Mega Saturday Rehearsals</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --blue:#1f5fff; --red:#ff3b30; --gold:#e6c878; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; background:#000; color:#fff;
+      font-family: Arial, Helvetica, sans-serif; }
+    .wrap { max-width:1100px; margin:0 auto; padding:18px 22px 50px; }
+
+    .topbar { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .topbar .label { color:#999; font-size:13px; }
+    select { background:#111; color:#fff; border:1px solid #333; border-radius:8px;
+      padding:10px 14px; font-size:16px; min-width:280px; }
+
+    .title { text-align:center; font-family:Georgia,'Times New Roman',serif;
+      color:var(--gold); font-size:30px; letter-spacing:1px; margin:4px 0 14px; }
+
+    .header { position:relative; text-align:center; padding:6px 130px; min-height:110px; }
+    .leader { font-size:42px; font-weight:bold; line-height:1.05; }
+    .location { font-size:22px; color:#bcbcbc; margin-top:10px; }
+    .avatar { position:absolute; top:0; right:0; width:100px; height:100px; border-radius:50%;
+      background:linear-gradient(135deg,#3a3a3a,#5a5a5a); display:flex; align-items:center;
+      justify-content:center; font-size:36px; font-weight:bold; border:3px solid #6a6a6a; }
+
+    @media (max-width: 760px) {
+      .header { padding:0; min-height:auto; }
+      .leader { font-size:32px; }
+      .location { font-size:19px; }
+      .avatar { position:static; margin:18px auto 0; }
+      .legend { gap:18px; font-size:15px; flex-wrap:wrap; }
+      select { min-width:0; flex:1; }
+    }
+
+    .legend { display:flex; gap:34px; justify-content:center; margin:20px 0 4px; color:#cfcfcf;
+      font-size:17px; }
+    .legend span { display:inline-flex; align-items:center; gap:9px; }
+    .sw { width:28px; height:15px; border-radius:2px; display:inline-block; }
+
+    .chartbox { height:460px; margin-top:6px; }
+    .msg { text-align:center; color:#888; padding:50px; font-size:17px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <span class="label">Leader / Hub:</span>
+      <select id="picker" onchange="render()"></select>
+    </div>
+
+    <div class="title">3000 GLGC MEGA SATURDAY SERVICES</div>
+
+    <div class="header">
+      <div class="leader" id="leader">Loading…</div>
+      <div class="location" id="location"></div>
+      <div class="avatar" id="avatar"></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw" style="background:var(--blue)"></i> Rehearsal Attendance</span>
+      <span><i class="sw" style="background:var(--red)"></i> Offering (GHS)</span>
+    </div>
+
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="msg" id="msg" style="display:none">No rehearsals recorded yet.</div>
+  </div>
+
+  <script>
+    // ====== which sheet to read when running as a standalone page ======
+    var SHEET_ID = '1ZVpZ9LtsKZX0h3_bbXb3OLuTKrVxG5W3KJS8UEMdUgg';
+
+    var DATA = { leaders: [] };
+    var chart = null;
+
+    // Two ways to get data:
+    //  1) Deployed inside Google Apps Script -> google.script.run (sheet can be private).
+    //  2) Opened as a normal web page -> read the live sheet directly via gviz (sheet shared "anyone with link").
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(onData)
+        .withFailureHandler(fail)
+        .getDashboardData();
+    } else {
+      loadViaGviz();
+    }
+
+    function fail(e) {
+      document.getElementById('leader').textContent = 'Error loading data';
+      console.error(e);
+    }
+
+    // ---------- standalone: pull the live sheet via gviz JSONP ----------
+    function loadViaGviz() {
+      window.__gvizCb = function (resp) {
+        try { onData(processGviz(resp)); }
+        catch (e) { fail(e); }
+      };
+      var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+                '/gviz/tq?tqx=out:json;responseHandler:__gvizCb';
+      var s = document.createElement('script');
+      s.src = url;
+      s.onerror = function () {
+        document.getElementById('leader').textContent = 'Could not reach the sheet';
+      };
+      document.body.appendChild(s);
+    }
+
+    function processGviz(resp) {
+      var cols = resp.table.cols.map(function (c) { return String(c.label || '').trim(); });
+      var iDate   = cols.indexOf('Date');
+      var iTs     = cols.indexOf('Timestamp');
+      var iLeader = cols.indexOf('Name of Leader who had the Service');
+      var iHub    = cols.indexOf('Hub Location');
+      var iAtt    = cols.indexOf('Attendance');
+      var iOff    = cols.indexOf('Offering');
+
+      var byLeader = {};
+      resp.table.rows.forEach(function (r) {
+        var c = r.c || [];
+        function val(i) { return (i >= 0 && c[i]) ? c[i].v : null; }
+
+        var leader = String(val(iLeader) || '').trim();
+        if (!leader) return;
+
+        var d = parseGvizDate(val(iDate)) || parseGvizDate(val(iTs));
+        if (!d) return;
+
+        var sat = saturdayOfWeek(d);
+        var key = sat.getTime();
+
+        if (!byLeader[leader]) byLeader[leader] = { leader: leader, location: '', weeks: {} };
+        var hub = String(val(iHub) || '').trim();
+        if (hub) byLeader[leader].location = hub;
+
+        if (!byLeader[leader].weeks[key]) {
+          byLeader[leader].weeks[key] = { date: sat, attendance: 0, offering: 0 };
+        }
+        byLeader[leader].weeks[key].attendance += toNum(val(iAtt));
+        byLeader[leader].weeks[key].offering   += toNum(val(iOff));
+      });
+
+      var leaders = Object.keys(byLeader).sort().map(function (name) {
+        var L = byLeader[name];
+        var pts = Object.keys(L.weeks).sort(function (a, b) { return a - b; }).map(function (k) {
+          var w = L.weeks[k];
+          return { week: isoWeek(w.date), dateLabel: fmtDate(w.date),
+                   attendance: w.attendance, offering: w.offering };
+        });
+        return { leader: L.leader, location: L.location, points: pts };
+      });
+      return { leaders: leaders };
+    }
+
+    function parseGvizDate(v) {
+      if (v == null) return null;
+      if (v instanceof Date) return v;
+      var m = /^Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)$/.exec(String(v));
+      if (m) return new Date(+m[1], +m[2], +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+      var d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function toNum(v) {
+      var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    }
+    function saturdayOfWeek(d) {
+      var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      var dow = x.getDay();                 // 0 Sun .. 6 Sat
+      var isoDow = (dow === 0) ? 7 : dow;   // Mon=1 .. Sun=7
+      x.setDate(x.getDate() + (6 - isoDow));
+      return x;
+    }
+    function isoWeek(d) {
+      var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      var day = t.getUTCDay() || 7;
+      t.setUTCDate(t.getUTCDate() + 4 - day);
+      var yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+      return Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+    }
+    function fmtDate(d) {
+      var dd = ('0' + d.getDate()).slice(-2);
+      var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+      var yy = String(d.getFullYear()).slice(-2);
+      return dd + '/' + mm + '/' + yy;
+    }
+
+    // ----------------------- rendering -----------------------
+    function onData(d) {
+      DATA = d || { leaders: [] };
+      var sel = document.getElementById('picker');
+      sel.innerHTML = '';
+      DATA.leaders.forEach(function (L, i) {
+        var o = document.createElement('option');
+        o.value = i;
+        o.textContent = L.leader + (L.location ? ' — ' + L.location : '');
+        sel.appendChild(o);
+      });
+      if (DATA.leaders.length) render();
+      else document.getElementById('leader').textContent = 'No data yet';
+    }
+
+    function initials(name) {
+      return name.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(function (w) { return w.charAt(0); }).join('').toUpperCase();
+    }
+
+    function render() {
+      var i = parseInt(document.getElementById('picker').value, 10) || 0;
+      var L = DATA.leaders[i];
+      if (!L) return;
+
+      document.getElementById('leader').textContent = L.leader;
+      document.getElementById('location').textContent = L.location || '';
+      document.getElementById('avatar').textContent = initials(L.leader);
+
+      var labels = L.points.map(function (p) { return ['WK ' + p.week, p.dateLabel]; });
+      var att = L.points.map(function (p) { return p.attendance; });
+      var off = L.points.map(function (p) { return p.offering; });
+
+      document.getElementById('msg').style.display = L.points.length ? 'none' : 'block';
+
+      var cfg = {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Rehearsal Attendance', data: att, backgroundColor: '#1f5fff',
+              borderRadius: 3, maxBarThickness: 46 },
+            { label: 'Offering (GHS)', data: off, backgroundColor: '#ff3b30',
+              borderRadius: 3, maxBarThickness: 46 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function (items) { return items[0].label.replace(',', '  '); }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#dddddd', font: { size: 13 } }, grid: { color: '#222' } },
+            y: { beginAtZero: true, ticks: { color: '#dddddd' }, grid: { color: '#222' } }
+          }
+        }
+      };
+
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById('chart'), cfg);
+    }
+  </script>
+</body>
+</html>
