@@ -77,6 +77,29 @@
     var DATA = { leaders: [] };
     var chart = null;
 
+    // Draws the value on top of every bar (always visible, no hover needed).
+    var valueLabels = {
+      id: 'valueLabels',
+      afterDatasetsDraw: function (chart) {
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        chart.data.datasets.forEach(function (ds, di) {
+          var meta = chart.getDatasetMeta(di);
+          if (meta.hidden) return;
+          meta.data.forEach(function (bar, i) {
+            var v = ds.data[i];
+            if (v == null) return;
+            ctx.fillText(v, bar.x, bar.y - 4);
+          });
+        });
+        ctx.restore();
+      }
+    };
+
     // Two ways to get data:
     //  1) Deployed inside Google Apps Script -> google.script.run (sheet can be private).
     //  2) Opened as a normal web page -> read the live sheet directly via gviz (sheet shared "anyone with link").
@@ -226,6 +249,7 @@
 
       var cfg = {
         type: 'bar',
+        plugins: [valueLabels],
         data: {
           labels: labels,
           datasets: [
@@ -248,7 +272,7 @@
           },
           scales: {
             x: { ticks: { color: '#dddddd', font: { size: 13 } }, grid: { color: '#222' } },
-            y: { beginAtZero: true, ticks: { color: '#dddddd' }, grid: { color: '#222' } }
+            y: { beginAtZero: true, grace: '10%', ticks: { color: '#dddddd' }, grid: { color: '#222' } }
           }
         }
       };
